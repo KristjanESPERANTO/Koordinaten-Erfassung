@@ -1,0 +1,23 @@
+{
+  "name": "Koordinaten-Erfassung",
+  "short_name": "Koordinaten",
+  "description": "GPS-Koordinaten für Mast und Tür erfassen",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#333333",
+  "theme_color": "#2196F3",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='192' height='192'%3E%3Crect width='192' height='192' fill='%232196F3'/%3E%3Ctext x='96' y='135' font-size='100' text-anchor='middle' fill='white'%3E📍%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512'%3E%3Crect width='512' height='512' fill='%232196F3'/%3E%3Ctext x='256' y='360' font-size='280' text-anchor='middle' fill='white'%3E📍%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

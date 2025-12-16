@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="GPS-Koordinaten für Mast und Tür erfassen">
+    <meta name="theme-color" content="#2196F3">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Koordinaten">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%232196F3'/%3E%3Ctext x='50' y='70' font-size='60' text-anchor='middle' fill='white'%3E📍%3C/text%3E%3C/svg%3E">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' fill='%232196F3'/%3E%3Ctext x='90' y='125' font-size='90' text-anchor='middle' fill='white'%3E📍%3C/text%3E%3C/svg%3E">
+    <title>Koordinaten-Erfassung</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #map {
+            height: calc(100vh - 140px);
+            width: 100%;
+        }
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            background: #333;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .toolbar button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .btn-locate {
+            background: #2196F3;
+            color: white;
+        }
+        .btn-mast {
+            background: #f44336;
+            color: white;
+        }
+        .btn-tuer {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-export {
+            background: #FF9800;
+            color: white;
+        }
+        .btn-import {
+            background: #9C27B0;
+            color: white;
+        }
+        .btn-share {
+            background: #00BCD4;
+            color: white;
+        }
+        .btn-delete {
+            background: #D32F2F;
+            color: white;
+        }
+        .btn-refresh {
+            background: #607D8B;
+            color: white;
+        }
+        .toolbar button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .toolbar-bottom {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: #1a1a1a;
+            border-top: 2px solid #444;
+            z-index: 1000;
+        }
+        .toolbar-bottom button {
+            flex: 1;
+            padding: 16px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            white-space: nowrap;
+            transition: opacity 0.3s, background 0.3s;
+        }
+        .toolbar-bottom button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .toolbar-bottom button.unstable {
+            opacity: 0.6;
+            filter: grayscale(50%);
+        }
+        .toolbar label {
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 14px;
+        }
+        .spacer {
+            flex-grow: 1;
+        }
+        .status {
+            color: #fff;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            flex-grow: 1;
+        }
+        /* Marker-Styles */
+        .marker-mast {
+            background: #f44336;
+            border: 2px solid #b71c1c;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .marker-tuer {
+            background: #4CAF50;
+            border: 2px solid #1b5e20;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        /* Accuracy-basierte Marker-Farben */
+        .marker-good {
+            background: #4CAF50 !important;
+            border: 2px solid #1b5e20 !important;
+        }
+        .marker-medium {
+            background: #FFC107 !important;
+            border: 2px solid #F57C00 !important;
+        }
+        .marker-poor {
+            background: #f44336 !important;
+            border: 2px solid #b71c1c !important;
+        }
+        .marker-position {
+            background: #2196F3;
+            border: 3px solid white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            box-shadow: 0 0 10px rgba(33, 150, 243, 0.8);
+        }
+        .marker-position-manual {
+            background: #FF9800;
+            border: 3px solid white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            box-shadow: 0 0 10px rgba(255, 152, 0, 0.8);
+        }
+        .leaflet-popup-content {
+            min-width: 200px;
+        }
+        .leaflet-popup-content button {
+            margin-top: 8px;
+            padding: 4px 12px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .leaflet-popup-content textarea {
+            width: 100%;
+            margin-top: 8px;
+            padding: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: vertical;
+            min-height: 60px;
+        }
+        .leaflet-popup-content .btn-save-comment {
+            background: #4CAF50;
+            margin-right: 4px;
+        }
+        .leaflet-popup-content .btn-edit-marker {
+            background: #FF9800;
+            margin-right: 4px;
+        }
+        .popup-comment {
+            margin-top: 8px;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            font-style: italic;
+        }
+        #fileInput {
+            display: none;
+        }
+        /* Edit-Toolbar (beim Verschieben) */
+        #editToolbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: none;
+            gap: 12px;
+            padding: 12px;
+            background: #FF9800;
+            border-top: 3px solid #F57C00;
+            z-index: 1001;
+        }
+        #editToolbar.active {
+            display: flex;
+        }
+        #editToolbar button {
+            flex: 1;
+            padding: 16px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        #editToolbar .btn-cancel {
+            background: #757575;
+            color: white;
+        }
+        #editToolbar .btn-save-edit {
+            background: #4CAF50;
+            color: white;
+        }
+        /* Spiderfy Styles */
+        .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
+            background-color: rgba(100, 100, 100, 0.6);
+        }
+        .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
+            background-color: rgba(80, 80, 80, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button class="btn-refresh" onclick="location.reload()">🔄 Aktualisieren</button>
+        <button class="btn-locate" id="btnRestartGPS" onclick="restartGPS()" style="display:none;">📡 GPS neu starten</button>
+        <label><input type="checkbox" id="showMast" checked onchange="toggleLayer('mast')"> M</label>
+        <label><input type="checkbox" id="showTuer" checked onchange="toggleLayer('tuer')"> T</label>
+        <div class="spacer"></div>
+        <button class="btn-import" onclick="document.getElementById('fileInput').click()">📥 Import</button>
+        <input type="file" id="fileInput" accept=".csv,.kml" onchange="importFile(event)">
+        <button class="btn-export" onclick="exportCSV()">📄 CSV</button>
+        <button class="btn-export" onclick="exportKML()">🌍 KML</button>
+        <button class="btn-share" onclick="shareData()">📤 Teilen</button>
+        <div class="spacer"></div>
+        <button class="btn-delete" onclick="deleteAllData()">🗑️ Löschen</button>
+        <span class="status" id="status">Bereit</span>
+    </div>
+    <div id="map"></div>
+    <div class="toolbar-bottom">
+        <button class="btn-mast" onclick="saveMarker('mast')" id="btnMast">🔴 M</button>
+        <button class="btn-tuer" onclick="saveMarker('tuer')" id="btnTuer">🟢 T</button>
+    </div>
+    <div id="editToolbar">
+        <button class="btn-cancel" onclick="cancelEdit()">❌ Abbrechen</button>
+        <button class="btn-save-edit" onclick="saveEdit()">💾 Position speichern</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <script>
+        // Karte initialisieren (Halle/Saale)
+        const map = L.map('map', { 
+            maxZoom: 22,
+            zoomControl: false // Standard Zoom-Control deaktivieren
+        }).setView([51.48, 11.97], 13);
+        
+        // Zoom-Control rechts hinzufügen
+        L.control.zoom({
+            position: 'topright'
+        }).addTo(map);
+        
+        // TileLayers definieren
+        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap',
+            maxZoom: 22
+        });
+        
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '© Esri',
+            maxZoom: 22
+        });
+        
+        // OSM als Standard-Layer hinzufügen
+        osmLayer.addTo(map);
+        
+        // Layer Control für Umschaltung
+        const baseLayers = {
+            "Straßenkarte": osmLayer,
+            "Satellit": satelliteLayer
+        };
+        L.control.layers(baseLayers).addTo(map);
+
+        // MarkerCluster für Spiderfy
+        const mastCluster = L.markerClusterGroup({
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true,
+            disableClusteringAtZoom: 20,
+            spiderfyDistanceMultiplier: 2,
+            iconCreateFunction: function(cluster) {
+                return L.divIcon({
+                    html: '<div style="background:#f44336;color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid #b71c1c;">' + cluster.getChildCount() + '</div>',
+                    className: '',
+                    iconSize: [30, 30]
+                });
+            }
+        });
+        
+        const tuerCluster = L.markerClusterGroup({
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true,
+            disableClusteringAtZoom: 19,
+            spiderfyDistanceMultiplier: 2,
+            iconCreateFunction: function(cluster) {
+                return L.divIcon({
+                    html: '<div style="background:#4CAF50;color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid #1b5e20;">' + cluster.getChildCount() + '</div>',
+                    className: '',
+                    iconSize: [30, 30]
+                });
+            }
+        });
+
+        map.addLayer(mastCluster);
+        map.addLayer(tuerCluster);
+
+        // Daten
+        let markers = {
+            mast: [],
+            tuer: []
+        };
+
+        // Aktuelle Position
+        let currentPosition = null;
+        let positionMarker = null;
+        let accuracyCircle = null;
+        let watchId = null;
+        let isStable = false;
+        let recentMeasurements = [];
+        let isManualPosition = false; // Track wenn Position manuell gesetzt
+        const STABILITY_THRESHOLD = 3; // Meter
+        const STABILITY_COUNT = 3; // Anzahl stabiler Messungen
+        
+        // Edit-Modus
+        let editMode = {
+            active: false,
+            type: null,
+            id: null,
+            marker: null,
+            originalPos: null
+        };
+
+        // Aus LocalStorage laden
+        function loadFromStorage() {
+            const saved = localStorage.getItem('koordinaten-erfassung');
+            if (saved) {
+                markers = JSON.parse(saved);
+                renderMarkers();
+            }
+        }
+
+        // In LocalStorage speichern
+        function saveToStorage() {
+            localStorage.setItem('koordinaten-erfassung', JSON.stringify(markers));
+        }
+
+        // Status anzeigen
+        function setStatus(text) {
+            document.getElementById('status').textContent = text;
+        }
+
+        // Live GPS-Tracking starten
+        function startLiveTracking() {
+            if (!navigator.geolocation) {
+                setStatus('❌ Geolocation nicht verfügbar');
+                return;
+            }
+
+            setStatus('📡 GPS wird gestartet...');
+
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const newPos = {
+                        lat: pos.coords.latitude,
+                        lon: pos.coords.longitude,
+                        accuracy: pos.coords.accuracy
+                    };
+
+                    // Zu recentMeasurements hinzufügen
+                    recentMeasurements.push(newPos);
+                    if (recentMeasurements.length > STABILITY_COUNT) {
+                        recentMeasurements.shift();
+                    }
+
+                    // Stabilität prüfen
+                    isStable = checkStability();
+
+                    // Beste Messung der letzten wählen
+                    const bestPos = recentMeasurements.reduce((best, m) => 
+                        m.accuracy < best.accuracy ? m : best
+                    );
+
+                    currentPosition = bestPos;
+
+                    // Marker und Kreis aktualisieren
+                    updatePositionMarker();
+                    updateAccuracyCircle();
+                    updateStatus();
+                    updateButtonStates();
+                },
+                (err) => {
+                    setStatus('❌ GPS-Fehler: ' + err.message);
+                },
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 20000
+                }
+            );
+        }
+
+        // Stabilität prüfen
+        function checkStability() {
+            if (recentMeasurements.length < STABILITY_COUNT) {
+                return false;
+            }
+
+            // Prüfen ob alle letzten Messungen innerhalb des Schwellwerts liegen
+            for (let i = 0; i < recentMeasurements.length - 1; i++) {
+                const dist = calculateDistance(
+                    recentMeasurements[i].lat,
+                    recentMeasurements[i].lon,
+                    recentMeasurements[i + 1].lat,
+                    recentMeasurements[i + 1].lon
+                );
+                if (dist > STABILITY_THRESHOLD) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Distanz zwischen zwei Koordinaten in Metern
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371000; // Erdradius in Metern
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        // Positionsmarker aktualisieren
+        function updatePositionMarker() {
+            if (!currentPosition) return;
+
+            if (positionMarker) {
+                positionMarker.setLatLng([currentPosition.lat, currentPosition.lon]);
+            } else {
+                const icon = L.divIcon({
+                    className: 'marker-position',
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
+                });
+                positionMarker = L.marker([currentPosition.lat, currentPosition.lon], { 
+                    icon: icon,
+                    draggable: true,
+                    autoPan: true
+                })
+                    .addTo(map)
+                    .bindPopup('📍 Meine Position<br><small>Zum Verschieben: gedrückt halten und ziehen</small>');
+
+                // Event für manuelles Verschieben
+                positionMarker.on('drag', function(e) {
+                    const pos = e.target.getLatLng();
+                    if (accuracyCircle) {
+                        accuracyCircle.setLatLng(pos);
+                    }
+                });
+
+                positionMarker.on('dragend', function(e) {
+                    const pos = e.target.getLatLng();
+                    currentPosition = {
+                        lat: pos.lat,
+                        lon: pos.lng,
+                        accuracy: 0 // Manuelle Position = keine GPS-Genauigkeit
+                    };
+                    isStable = true; // Als stabil markieren
+                    isManualPosition = true; // Manueller Modus
+                    recentMeasurements = [currentPosition]; // Reset measurements
+                    
+                    // GPS-Tracking stoppen
+                    if (watchId) {
+                        navigator.geolocation.clearWatch(watchId);
+                        watchId = null;
+                    }
+                    
+                    // Icon auf manuell umstellen
+                    const manualIcon = L.divIcon({
+                        className: 'marker-position-manual',
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+                    positionMarker.setIcon(manualIcon);
+                    
+                    updateAccuracyCircle();
+                    updateStatus();
+                    updateButtonStates();
+                });
+
+                map.setView([currentPosition.lat, currentPosition.lon], 18);
+            }
+        }
+
+        // Genauigkeitskreis aktualisieren
+        function updateAccuracyCircle() {
+            if (!currentPosition) return;
+
+            if (accuracyCircle) {
+                accuracyCircle.setLatLng([currentPosition.lat, currentPosition.lon]);
+                accuracyCircle.setRadius(currentPosition.accuracy || 0);
+            } else {
+                accuracyCircle = L.circle([currentPosition.lat, currentPosition.lon], {
+                    radius: currentPosition.accuracy || 0,
+                    color: '#2196F3',
+                    fillColor: '#2196F3',
+                    fillOpacity: 0.15,
+                    weight: 2
+                }).addTo(map);
+            }
+        }
+
+        // Status aktualisieren
+        function updateStatus() {
+            if (!currentPosition) {
+                setStatus('📡 Warte auf GPS...');
+                return;
+            }
+
+            const coords = `📍 ${currentPosition.lat.toFixed(6)}, ${currentPosition.lon.toFixed(6)}`;
+            const acc = `(±${Math.round(currentPosition.accuracy)}m)`;
+            
+            // GPS-Neustart Button ein/ausblenden
+            const btnRestartGPS = document.getElementById('btnRestartGPS');
+            if (isManualPosition) {
+                btnRestartGPS.style.display = 'block';
+                setStatus(`${coords} ✏️ Manuell`);
+            } else {
+                btnRestartGPS.style.display = 'none';
+                if (currentPosition.accuracy === 0) {
+                    setStatus(`${coords} ✏️ Manuell`);
+                } else if (isStable) {
+                    if (currentPosition.accuracy < 5) {
+                        setStatus(`${coords} ${acc} ✅ Sehr gut`);
+                    } else if (currentPosition.accuracy < 10) {
+                        setStatus(`${coords} ${acc} ✓ Stabil`);
+                    } else {
+                        setStatus(`${coords} ${acc} ⚠️ Stabil aber ungenau`);
+                    }
+                } else {
+                    setStatus(`${coords} ${acc} ⏳ Stabilisiere...`);
+                }
+            }
+        }
+
+        // Button-States aktualisieren
+        function updateButtonStates() {
+            const btnMast = document.getElementById('btnMast');
+            const btnTuer = document.getElementById('btnTuer');
+
+            if (isStable) {
+                btnMast.classList.remove('unstable');
+                btnTuer.classList.remove('unstable');
+            } else {
+                btnMast.classList.add('unstable');
+                btnTuer.classList.add('unstable');
+            }
+        }
+
+        // GPS neu starten (nach manuellem Modus)
+        function restartGPS() {
+            isManualPosition = false;
+            recentMeasurements = [];
+            isStable = false;
+            
+            // Alten Watch stoppen falls vorhanden
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+            
+            // Icon zurück auf GPS-Modus (blau)
+            if (positionMarker) {
+                const gpsIcon = L.divIcon({
+                    className: 'marker-position',
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
+                });
+                positionMarker.setIcon(gpsIcon);
+            }
+            
+            // GPS neu starten
+            startLiveTracking();
+            setStatus('📡 GPS wird neu gestartet...');
+        }
+
+        // Marker speichern
+        function saveMarker(type) {
+            if (!currentPosition) return;
+
+            const kommentar = prompt(`Kommentar für ${type === 'mast' ? 'Mast' : 'Tür'} (optional):`, '');
+
+            const id = Date.now();
+            const marker = {
+                id: id,
+                lat: currentPosition.lat,
+                lon: currentPosition.lon,
+                timestamp: new Date().toISOString(),
+                type: type,
+                kommentar: kommentar || '',
+                accuracy: currentPosition.accuracy
+            };
+            
+            // Wenn Position manuell verschoben wurde, als korrigiert markieren
+            if (isManualPosition) {
+                marker.korrigiert_am = new Date().toISOString();
+            }
+
+            markers[type].push(marker);
+            saveToStorage();
+            addMarkerToMap(marker);
+            
+            setStatus(`${type === 'mast' ? 'M' : 'T'} gespeichert (#${markers[type].length})`);
+        }
+
+        // Marker zur Karte hinzufügen
+        function addMarkerToMap(data) {
+            // CSS-Klasse basierend auf Genauigkeit wählen
+            let accuracyClass = '';
+            if (data.accuracy) {
+                if (data.accuracy < 5) {
+                    accuracyClass = ' marker-good';
+                } else if (data.accuracy < 15) {
+                    accuracyClass = ' marker-medium';
+                } else {
+                    accuracyClass = ' marker-poor';
+                }
+            }
+            
+            const icon = L.divIcon({
+                className: `marker-${data.type}${accuracyClass}`,
+                html: data.type === 'mast' ? 'M' : 'T',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+
+            const cluster = data.type === 'mast' ? mastCluster : tuerCluster;
+            
+            const marker = L.marker([data.lat, data.lon], { icon: icon });
+            marker._dataId = data.id;
+            marker._dataType = data.type;
+            
+            marker.bindPopup(() => createPopupContent(data));
+            cluster.addLayer(marker);
+        }
+
+        // Popup-Inhalt erstellen
+        function createPopupContent(data) {
+            const kommentarHtml = data.kommentar 
+                ? `<div class="popup-comment">💬 ${escapeHtml(data.kommentar)}</div>` 
+                : '';
+            
+            const accuracyHtml = data.accuracy 
+                ? `<br>Genauigkeit: ±${Math.round(data.accuracy)}m`
+                : '';
+            
+            const korrigiertHtml = data.korrigiert_am
+                ? `<br><small style="color:#FF9800;">✏️ Korrigiert: ${new Date(data.korrigiert_am).toLocaleString('de-DE')}</small>`
+                : '';
+            
+            return `
+                <strong>${data.type === 'mast' ? '🔴 Mast (M)' : '🟢 Tür (T)'}</strong><br>
+                Lat: ${data.lat.toFixed(6)}<br>
+                Lon: ${data.lon.toFixed(6)}<br>
+                Zeit: ${new Date(data.timestamp).toLocaleString('de-DE')}${accuracyHtml}${korrigiertHtml}
+                ${kommentarHtml}
+                <div style="margin-top:10px;">
+                    <textarea id="comment-${data.id}" placeholder="Kommentar...">${escapeHtml(data.kommentar || '')}</textarea>
+                    <button class="btn-save-comment" onclick="saveComment('${data.type}', ${data.id})">💾 Speichern</button>
+                    <button class="btn-edit-marker" onclick="startEditMarker('${data.type}', ${data.id})">✏️ Korrigieren</button>
+                    <button onclick="deleteMarker('${data.type}', ${data.id})">🗑️ Löschen</button>
+                </div>
+            `;
+        }
+
+        // HTML escapen
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Kommentar speichern
+        function saveComment(type, id) {
+            const textarea = document.getElementById(`comment-${id}`);
+            const kommentar = textarea.value;
+            
+            const markerData = markers[type].find(m => m.id === id);
+            if (markerData) {
+                markerData.kommentar = kommentar;
+                saveToStorage();
+                renderMarkers();
+                setStatus('Kommentar gespeichert');
+            }
+        }
+
+        // Marker-Position korrigieren
+        function startEditMarker(type, id) {
+            const markerData = markers[type].find(m => m.id === id);
+            if (!markerData) return;
+
+            // Marker in der Karte finden
+            const cluster = type === 'mast' ? mastCluster : tuerCluster;
+            let targetMarker = null;
+            
+            cluster.eachLayer(function(layer) {
+                if (layer._dataId === id && layer._dataType === type) {
+                    targetMarker = layer;
+                }
+            });
+
+            if (!targetMarker) return;
+
+            // Popup schließen
+            targetMarker.closePopup();
+
+            // Marker draggable machen
+            targetMarker.dragging.enable();
+            
+            // Edit-Modus aktivieren
+            editMode = {
+                active: true,
+                type: type,
+                id: id,
+                marker: targetMarker,
+                originalPos: { lat: markerData.lat, lon: markerData.lon }
+            };
+            
+            // Edit-Toolbar anzeigen, normale Buttons verstecken
+            document.getElementById('editToolbar').classList.add('active');
+            document.querySelector('.toolbar-bottom').style.display = 'none';
+            
+            setStatus('✏️ Marker verschieben...');
+        }
+
+        // Edit speichern (aus Toolbar)
+        function saveEdit() {
+            if (!editMode.active) return;
+            
+            const markerData = markers[editMode.type].find(m => m.id === editMode.id);
+            if (!markerData) return;
+
+            // Neue Position übernehmen
+            const newPos = editMode.marker.getLatLng();
+            markerData.lat = newPos.lat;
+            markerData.lon = newPos.lng;
+            markerData.korrigiert_am = new Date().toISOString();
+            markerData.accuracy = 0; // Manuell korrigierte Position
+
+            // Dragging deaktivieren
+            editMode.marker.dragging.disable();
+
+            // Speichern und neu rendern
+            saveToStorage();
+            renderMarkers();
+            
+            // Edit-Modus beenden
+            exitEditMode();
+            
+            setStatus('✓ Position korrigiert');
+        }
+
+        // Edit abbrechen (aus Toolbar)
+        function cancelEdit() {
+            if (!editMode.active) return;
+
+            // Zurück zur Originalposition
+            if (editMode.originalPos) {
+                editMode.marker.setLatLng([editMode.originalPos.lat, editMode.originalPos.lon]);
+            }
+
+            // Dragging deaktivieren
+            editMode.marker.dragging.disable();
+
+            // Edit-Modus beenden
+            exitEditMode();
+            
+            setStatus('Abgebrochen');
+        }
+
+        // Edit-Modus beenden
+        function exitEditMode() {
+            // Toolbar verstecken, normale Buttons zeigen
+            document.getElementById('editToolbar').classList.remove('active');
+            document.querySelector('.toolbar-bottom').style.display = 'flex';
+            
+            // Edit-Modus zurücksetzen
+            editMode = {
+                active: false,
+                type: null,
+                id: null,
+                marker: null,
+                originalPos: null
+            };
+        }
+
+        // Marker löschen
+        function deleteMarker(type, id) {
+            markers[type] = markers[type].filter(m => m.id !== id);
+            saveToStorage();
+            renderMarkers();
+            map.closePopup();
+            setStatus(`${type === 'mast' ? 'M' : 'T'} gelöscht`);
+        }
+
+        // Alle Marker neu rendern
+        function renderMarkers() {
+            mastCluster.clearLayers();
+            tuerCluster.clearLayers();
+            
+            markers.mast.forEach(m => addMarkerToMap(m));
+            markers.tuer.forEach(m => addMarkerToMap(m));
+        }
+
+        // Layer ein/ausblenden
+        function toggleLayer(type) {
+            const checkbox = document.getElementById(type === 'mast' ? 'showMast' : 'showTuer');
+            const cluster = type === 'mast' ? mastCluster : tuerCluster;
+            
+            if (checkbox.checked) {
+                map.addLayer(cluster);
+            } else {
+                map.removeLayer(cluster);
+            }
+        }
+
+        // Import CSV/KML
+        function importFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                
+                if (file.name.endsWith('.csv')) {
+                    importCSV(content);
+                } else if (file.name.endsWith('.kml')) {
+                    importKML(content);
+                } else {
+                    setStatus('Unbekanntes Dateiformat');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = ''; // Reset für erneuten Import
+        }
+
+        // CSV Import
+        function importCSV(content) {
+            const lines = content.trim().split('\n');
+            if (lines.length < 2) {
+                setStatus('CSV leer oder ungültig');
+                return;
+            }
+
+            const header = lines[0].split(';').map(h => h.trim().toLowerCase());
+            const idxId = header.indexOf('id');
+            const idxTyp = header.indexOf('typ');
+            const idxLat = header.indexOf('lat');
+            const idxLon = header.indexOf('lon');
+            const idxTimestamp = header.indexOf('timestamp');
+            const idxKommentar = header.indexOf('kommentar');
+
+            if (idxLat === -1 || idxLon === -1) {
+                setStatus('CSV: lat/lon Spalten fehlen');
+                return;
+            }
+
+            let imported = 0;
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(';');
+                if (cols.length < 2) continue;
+
+                const lat = parseFloat(cols[idxLat]);
+                const lon = parseFloat(cols[idxLon]);
+                if (isNaN(lat) || isNaN(lon)) continue;
+
+                let type = 'mast';
+                if (idxTyp !== -1) {
+                    const typVal = cols[idxTyp].trim().toLowerCase();
+                    if (typVal === 'tür' || typVal === 'tuer' || typVal === 't') {
+                        type = 'tuer';
+                    }
+                }
+
+                const marker = {
+                    id: idxId !== -1 ? parseInt(cols[idxId]) || Date.now() + i : Date.now() + i,
+                    lat: lat,
+                    lon: lon,
+                    timestamp: idxTimestamp !== -1 && cols[idxTimestamp] ? cols[idxTimestamp].trim() : new Date().toISOString(),
+                    type: type,
+                    kommentar: idxKommentar !== -1 ? (cols[idxKommentar] || '').trim() : ''
+                };
+
+                markers[type].push(marker);
+                imported++;
+            }
+
+            saveToStorage();
+            renderMarkers();
+            fitMapToMarkers();
+            setStatus(`${imported} Punkte importiert`);
+        }
+
+        // KML Import
+        function importKML(content) {
+            const parser = new DOMParser();
+            const kml = parser.parseFromString(content, 'text/xml');
+            const placemarks = kml.getElementsByTagName('Placemark');
+
+            let imported = 0;
+            for (let pm of placemarks) {
+                const coordsEl = pm.getElementsByTagName('coordinates')[0];
+                if (!coordsEl) continue;
+
+                const coords = coordsEl.textContent.trim().split(',');
+                if (coords.length < 2) continue;
+
+                const lon = parseFloat(coords[0]);
+                const lat = parseFloat(coords[1]);
+                if (isNaN(lat) || isNaN(lon)) continue;
+
+                const nameEl = pm.getElementsByTagName('name')[0];
+                const name = nameEl ? nameEl.textContent : '';
+                
+                const descEl = pm.getElementsByTagName('description')[0];
+                const desc = descEl ? descEl.textContent : '';
+
+                // Typ aus Name oder Style ermitteln
+                let type = 'mast';
+                const nameLower = name.toLowerCase();
+                if (nameLower.includes('tür') || nameLower.includes('tuer') || nameLower.startsWith('t ')) {
+                    type = 'tuer';
+                }
+
+                const marker = {
+                    id: Date.now() + imported,
+                    lat: lat,
+                    lon: lon,
+                    timestamp: new Date().toISOString(),
+                    type: type,
+                    kommentar: desc
+                };
+
+                markers[type].push(marker);
+                imported++;
+            }
+
+            saveToStorage();
+            renderMarkers();
+            fitMapToMarkers();
+            setStatus(`${imported} Punkte aus KML importiert`);
+        }
+
+        // Karte auf alle Marker zoomen
+        function fitMapToMarkers() {
+            const allMarkers = [...markers.mast, ...markers.tuer];
+            if (allMarkers.length === 0) return;
+
+            const bounds = L.latLngBounds(allMarkers.map(m => [m.lat, m.lon]));
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
+
+        // Zeitstempel für Dateinamen generieren
+        function getTimestamp() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            return `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
+        }
+
+        // CSV Export
+        function exportCSV() {
+            const allMarkers = [
+                ...markers.mast.map(m => ({ ...m, typ: 'M' })),
+                ...markers.tuer.map(m => ({ ...m, typ: 'T' }))
+            ].sort((a, b) => a.id - b.id);
+
+            if (allMarkers.length === 0) {
+                setStatus('Keine Daten zum Exportieren');
+                return;
+            }
+
+            const header = 'id;typ;lat;lon;timestamp;kommentar';
+            const rows = allMarkers.map(m => 
+                `${m.id};${m.typ};${m.lat};${m.lon};${m.timestamp};${(m.kommentar || '').replace(/;/g, ',')}`
+            );
+            const csv = [header, ...rows].join('\n');
+
+            const filename = `koordinaten_${getTimestamp()}.csv`;
+            downloadFile(csv, filename, 'text/csv');
+            setStatus(`CSV exportiert (${allMarkers.length} Punkte)`);
+        }
+
+        // KML Export
+        function exportKML() {
+            const allMarkers = [
+                ...markers.mast.map(m => ({ ...m, typ: 'M' })),
+                ...markers.tuer.map(m => ({ ...m, typ: 'T' }))
+            ];
+
+            if (allMarkers.length === 0) {
+                setStatus('Keine Daten zum Exportieren');
+                return;
+            }
+
+            const kml = generateKMLContent(allMarkers);
+            const filename = `koordinaten_${getTimestamp()}.kml`;
+            downloadFile(kml, filename, 'application/vnd.google-earth.kml+xml');
+            setStatus(`KML exportiert (${allMarkers.length} Punkte)`);
+        }
+
+        // XML escapen
+        function escapeXml(text) {
+            return text.replace(/&/g, '&amp;')
+                       .replace(/</g, '&lt;')
+                       .replace(/>/g, '&gt;')
+                       .replace(/"/g, '&quot;');
+        }
+
+        // Datei-Download
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // KML-Inhalt generieren
+        function generateKMLContent(allMarkers) {
+            const placemarks = allMarkers.map(m => {
+                const kommentarText = m.kommentar ? `\nKommentar: ${escapeXml(m.kommentar)}` : '';
+                const accuracyText = m.accuracy ? `\nGenauigkeit: ±${Math.round(m.accuracy)}m` : '';
+                const korrigiertText = m.korrigiert_am ? `\nKorrigiert: ${new Date(m.korrigiert_am).toLocaleString('de-DE')}` : '';
+                
+                // Style basierend auf Genauigkeit wählen
+                let styleId = m.type; // Standard
+                if (m.accuracy) {
+                    if (m.accuracy < 5) {
+                        styleId = `${m.type}-good`; // Grün
+                    } else if (m.accuracy < 15) {
+                        styleId = `${m.type}-medium`; // Gelb
+                    } else {
+                        styleId = `${m.type}-poor`; // Rot
+                    }
+                }
+                
+                return `
+        <Placemark>
+            <name>${m.typ === 'M' ? 'Mast' : 'Tür'} #${m.id}</name>
+            <description>Erfasst: ${new Date(m.timestamp).toLocaleString('de-DE')}${accuracyText}${korrigiertText}${kommentarText}</description>
+            <styleUrl>#style-${styleId}</styleUrl>
+            <Point>
+                <coordinates>${m.lon},${m.lat},0</coordinates>
+            </Point>
+        </Placemark>`;
+            }).join('');
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+    <Document>
+        <name>Koordinaten-Erfassung</name>
+        <!-- Mast Styles -->
+        <Style id="style-mast-good">
+            <IconStyle>
+                <color>ff00ff00</color>
+                <scale>1.2</scale>
+                <Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon>
+            </IconStyle>
+        </Style>
+        <Style id="style-mast-medium">
+            <IconStyle>
+                <color>ff00ffff</color>
+                <scale>1.0</scale>
+                <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-circle.png</href></Icon>
+            </IconStyle>
+        </Style>
+        <Style id="style-mast-poor">
+            <IconStyle>
+                <color>ff0000ff</color>
+                <scale>1.0</scale>
+                <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+            </IconStyle>
+        </Style>
+        <Style id="style-mast">
+            <IconStyle>
+                <color>ff0000ff</color>
+                <scale>1.0</scale>
+                <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+            </IconStyle>
+        </Style>
+        <!-- Tür Styles -->
+        <Style id="style-tuer-good">
+            <IconStyle>
+                <color>ff00ff00</color>
+                <scale>1.2</scale>
+                <Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon>
+            </IconStyle>
+        </Style>
+        <Style id="style-tuer-medium">
+            <IconStyle>
+                <color>ff00ffff</color>
+                <scale>1.0</scale>
+                <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-circle.png</href></Icon>
+            </IconStyle>
+        </Style>
+        <Style id="style-tuer-poor">
+            <IconStyle>
+                <color>ff0000ff</color>
+                <scale>1.0</scale>
+                <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+            </IconStyle>
+        </Style>
+        <Style id="style-tuer">
+            <IconStyle>
+                <color>ff00ff00</color>
+                <scale>1.0</scale>
+                <Icon><href>http://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon>
+            </IconStyle>
+        </Style>
+        ${placemarks}
+    </Document>
+</kml>`;
+        }
+
+        // Teilen-Funktion (Web Share API + E-Mail Fallback)
+        async function shareData() {
+            const allMarkers = [
+                ...markers.mast.map(m => ({ ...m, typ: 'M' })),
+                ...markers.tuer.map(m => ({ ...m, typ: 'T' }))
+            ].sort((a, b) => a.id - b.id);
+
+            if (allMarkers.length === 0) {
+                setStatus('Keine Daten zum Teilen');
+                return;
+            }
+
+            // CSV erstellen
+            const header = 'id;typ;lat;lon;timestamp;accuracy;korrigiert_am;kommentar';
+            const rows = allMarkers.map(m => 
+                `${m.id};${m.typ};${m.lat};${m.lon};${m.timestamp};${m.accuracy || ''};${m.korrigiert_am || ''};${(m.kommentar || '').replace(/;/g, ',')}`
+            );
+            const csvContent = [header, ...rows].join('\n');
+
+            // Zusammenfassung
+            const mastCount = markers.mast.length;
+            const tuerCount = markers.tuer.length;
+            const now = new Date().toLocaleString('de-DE');
+            const summary = `Koordinaten-Erfassung (${now})\n\nMast (M): ${mastCount}\nTür (T): ${tuerCount}\nGesamt: ${allMarkers.length}`;
+
+            // Web Share API versuchen (funktioniert auf mobilen Geräten)
+            if (navigator.share) {
+                try {
+                    // CSV-Datei erstellen
+                    const timestamp = getTimestamp();
+                    const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+                    const csvFile = new File([csvBlob], `koordinaten_${timestamp}.csv`, { type: 'text/csv' });
+                    
+                    const shareData = {
+                        title: 'Koordinaten-Erfassung',
+                        text: summary,
+                        files: [csvFile]
+                    };
+
+                    // Prüfen ob File geteilt werden kann
+                    if (navigator.canShare && navigator.canShare(shareData)) {
+                        await navigator.share(shareData);
+                        setStatus('CSV geteilt');
+                        return;
+                    } else {
+                        console.log('canShare mit File nicht möglich, versuche nur Text...');
+                    }
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        console.log('Share mit File fehlgeschlagen:', err);
+                    } else {
+                        setStatus('Teilen abgebrochen');
+                        return;
+                    }
+                }
+
+                // Fallback: Download + Text teilen
+                try {
+                    downloadFile(csvContent, 'koordinaten.csv', 'text/csv');
+                    
+                    await navigator.share({
+                        title: 'Koordinaten-Erfassung',
+                        text: summary + '\n\n⚠️ CSV wurde heruntergeladen.\nBitte manuell als Anhang hinzufügen.'
+                    });
+                    setStatus('Download + Text geteilt');
+                    return;
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        setStatus('Teilen abgebrochen');
+                        return;
+                    }
+                }
+            }
+
+            // Fallback: E-Mail
+            shareViaEmail(summary, csvContent, allMarkers.length);
+        }
+
+        // E-Mail Fallback
+        function shareViaEmail(summary, csvContent, count) {
+            // CSV-Datei automatisch herunterladen
+            const filename = `koordinaten_${getTimestamp()}.csv`;
+            downloadFile(csvContent, filename, 'text/csv');
+            
+            // E-Mail mit Hinweis öffnen
+            setTimeout(() => {
+                const subject = encodeURIComponent(`Koordinaten-Erfassung (${count} Punkte)`);
+                const body = encodeURIComponent(
+                    summary + 
+                    '\n\nDie CSV-Datei wurde automatisch heruntergeladen.\n' +
+                    'Bitte als Anhang an diese E-Mail anfügen.'
+                );
+                
+                window.location.href = `mailto:?subject=${subject}&body=${body}`;
+                setStatus('Download gestartet + E-Mail geöffnet');
+            }, 500);
+        }
+
+        // Alle Daten löschen
+        function deleteAllData() {
+            const mastCount = markers.mast.length;
+            const tuerCount = markers.tuer.length;
+            const total = mastCount + tuerCount;
+
+            if (total === 0) {
+                alert('Keine Daten zum Löschen vorhanden.');
+                return;
+            }
+
+            const confirmation = confirm(
+                `⚠️ WARNUNG: Alle Daten löschen?\n\n` +
+                `Mast (M): ${mastCount}\n` +
+                `Tür (T): ${tuerCount}\n` +
+                `Gesamt: ${total} Punkte\n\n` +
+                `Diese Aktion kann nicht rückgängig gemacht werden!`
+            );
+
+            if (!confirmation) {
+                setStatus('Löschen abgebrochen');
+                return;
+            }
+
+            // Doppelte Bestätigung
+            const doubleConfirm = confirm(
+                `Wirklich alle ${total} Punkte unwiderruflich löschen?`
+            );
+
+            if (!doubleConfirm) {
+                setStatus('Löschen abgebrochen');
+                return;
+            }
+
+            // Daten löschen
+            markers.mast = [];
+            markers.tuer = [];
+            localStorage.removeItem('koordinaten-erfassung');
+            renderMarkers();
+            setStatus(`Alle ${total} Punkte gelöscht`);
+        }
+
+        // Beim Laden
+        loadFromStorage();
+        startLiveTracking(); // GPS automatisch starten
+
+        // Service Worker registrieren (PWA)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('Service Worker registriert:', reg.scope))
+                    .catch(err => console.log('Service Worker Fehler:', err));
+            });
+        }
+    </script>
+</body>
+</html>
